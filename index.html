@@ -6,11 +6,9 @@
   <title>Dino Runner</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
-      background: #1a1a2e;
+      background: #0d0d1a;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -19,39 +17,38 @@
       font-family: 'Press Start 2P', monospace;
       overflow: hidden;
     }
-
     h1 {
       color: #e94560;
-      font-size: 1.4rem;
-      margin-bottom: 18px;
+      font-size: 1.3rem;
+      margin-bottom: 10px;
       letter-spacing: 2px;
-      text-shadow: 0 0 20px #e9456088;
+      text-shadow: 0 0 20px #e9456099;
     }
-
     #score-display {
       color: #00d2ff;
-      font-size: 0.75rem;
-      margin-bottom: 10px;
+      font-size: 0.7rem;
+      margin-bottom: 8px;
       letter-spacing: 1px;
+      display: flex;
+      gap: 20px;
     }
-
+    #time-label {
+      color: #ffd700;
+      font-size: 0.6rem;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+      min-height: 1em;
+    }
     #game-container {
       position: relative;
       width: 820px;
       max-width: 98vw;
-      background: #16213e;
       border: 3px solid #e94560;
       border-radius: 10px;
-      box-shadow: 0 0 40px #e9456055, inset 0 0 30px #0f3460;
+      box-shadow: 0 0 40px #e9456055;
       overflow: hidden;
     }
-
-    canvas {
-      display: block;
-      width: 100%;
-      image-rendering: pixelated;
-    }
-
+    canvas { display: block; width: 100%; image-rendering: pixelated; }
     #overlay {
       position: absolute;
       inset: 0;
@@ -59,360 +56,539 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: #1a1a2ecc;
+      background: rgba(10,10,26,0.82);
       z-index: 10;
     }
-
-    #overlay h2 {
-      color: #fff;
-      font-size: 1rem;
-      margin-bottom: 14px;
-      text-shadow: 0 0 10px #e94560;
-    }
-
-    #overlay p {
-      color: #00d2ff;
-      font-size: 0.6rem;
-      line-height: 2;
-      text-align: center;
-    }
-
-    #overlay .hi {
-      color: #ffd700;
-      margin-top: 10px;
-      font-size: 0.6rem;
-    }
-
-    #hint {
-      color: #aaa;
-      font-size: 0.52rem;
-      margin-top: 16px;
-      text-align: center;
-      letter-spacing: 1px;
-    }
+    #overlay h2 { color: #fff; font-size: 0.95rem; margin-bottom: 14px; text-shadow: 0 0 10px #e94560; }
+    #overlay p  { color: #00d2ff; font-size: 0.58rem; line-height: 2.2; text-align: center; }
+    #overlay .gold { color: #ffd700; margin-top: 10px; font-size: 0.58rem; }
+    #hint { color: #666; font-size: 0.5rem; margin-top: 12px; text-align: center; letter-spacing: 1px; }
   </style>
 </head>
 <body>
-
 <h1>🦕 DINO RUNNER</h1>
-<div id="score-display">PUNTOS: <span id="pts">0</span> &nbsp;|&nbsp; MEJOR: <span id="best">0</span></div>
+<div id="score-display">
+  <span>PUNTOS: <span id="pts">0</span></span>
+  <span>MEJOR: <span id="best">0</span></span>
+</div>
+<div id="time-label" id="time-label">🌅 Amanecer</div>
 
 <div id="game-container">
   <canvas id="c" width="820" height="230"></canvas>
   <div id="overlay">
     <h2>¡LISTO PARA CORRER!</h2>
-    <p>Presiona <span style="color:#e94560">ESPACIO</span> o <span style="color:#e94560">↑</span> para saltar</p>
-    <p>En móvil: <span style="color:#e94560">TAP</span> en la pantalla</p>
-    <p class="hi">🏆 TU MEJOR: <span id="best2">0</span></p>
+    <p>ESPACIO / ↑ para saltar</p>
+    <p>↓ para agacharte</p>
+    <p>En móvil: <span style="color:#e94560">TAP</span></p>
+    <p class="gold">🏆 MEJOR: <span id="best2">0</span></p>
   </div>
 </div>
-
-<p id="hint">ESPACIO / ↑ / TAP para saltar &nbsp;•&nbsp; AGÁCHATE con ↓</p>
+<p id="hint">ESPACIO · ↑ saltar &nbsp;|&nbsp; ↓ agachar &nbsp;|&nbsp; TAP en móvil</p>
 
 <script>
-  // ─── CANVAS & CONTEXTO ────────────────────────────────────────────
-  const canvas = document.getElementById('c');
-  const ctx    = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
+// ═══════════════════════════════════════════════════════════
+//  SETUP
+// ═══════════════════════════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const GROUND = H - 40;
 
-  // ─── ESTADO DEL JUEGO ─────────────────────────────────────────────
-  let state     = 'idle';   // idle | running | dead
-  let score     = 0;
-  let bestScore = 0;
-  let speed     = 6;
-  let frame     = 0;
-  let animId;
+// ═══════════════════════════════════════════════════════════
+//  CICLO DÍA – TARDE – NOCHE
+//  Cada "era" dura X puntos. Al pasar de era, la paleta
+//  del cielo, suelo y objetos cambia suavemente.
+// ═══════════════════════════════════════════════════════════
+const ERAS = [
+  {
+    name: '🌅 Amanecer',
+    sky:   ['#ffe4b5', '#ffd384', '#ffb347'],   // naranja pálido
+    ground:'#c8a46e',
+    cloud: 'rgba(255,255,255,0.55)',
+    star:  0,           // opacidad estrella (0 = sin estrellas)
+    sun:   { show: true,  color: '#ff9966', x: 0.8, y: 0.22 },
+    moon:  { show: false },
+    fog:   'rgba(255,220,150,0.10)',
+  },
+  {
+    name: '☀️ Mediodía',
+    sky:   ['#87ceeb', '#56b4e9', '#1e90ff'],
+    ground:'#a8d46f',
+    cloud: 'rgba(255,255,255,0.80)',
+    star:  0,
+    sun:   { show: true,  color: '#fffacd', x: 0.5, y: 0.12 },
+    moon:  { show: false },
+    fog:   'rgba(135,206,235,0.05)',
+  },
+  {
+    name: '🌇 Atardecer',
+    sky:   ['#ff6b35', '#e05d44', '#9b2335'],
+    ground:'#8b5e3c',
+    cloud: 'rgba(255,160,80,0.65)',
+    star:  0,
+    sun:   { show: true,  color: '#ff4500', x: 0.15, y: 0.65 },
+    moon:  { show: false },
+    fog:   'rgba(200,80,50,0.12)',
+  },
+  {
+    name: '🌃 Noche',
+    sky:   ['#0a0a1a', '#0d1b3e', '#162040'],
+    ground:'#1a2a1a',
+    cloud: 'rgba(100,120,180,0.30)',
+    star:  1,
+    sun:   { show: false },
+    moon:  { show: true, x: 0.8, y: 0.2 },
+    fog:   'rgba(10,10,40,0.18)',
+  },
+];
 
-  // ─── DINO ─────────────────────────────────────────────────────────
-  const GROUND = H - 40;   // nivel del piso
+// Puntos necesarios para pasar a la siguiente era
+const ERA_THRESHOLDS = [0, 80, 200, 380];
 
-  const dino = {
-    x: 80, y: GROUND,
-    w: 44, h: 52,
-    vy: 0,           // velocidad vertical
-    grounded: true,
-    ducking: false,
-    legFrame: 0,     // animación de piernas
-  };
+// Interpolación suave entre dos eras (t = 0..1)
+function lerpColor(c1, c2, t) {
+  const p = n => parseInt(n, 16);
+  const hex = c => c.replace('#','');
+  const r1=p(hex(c1).slice(0,2)), g1=p(hex(c1).slice(2,4)), b1=p(hex(c1).slice(4,6));
+  const r2=p(hex(c2).slice(0,2)), g2=p(hex(c2).slice(2,4)), b2=p(hex(c2).slice(4,6));
+  const r=Math.round(r1+(r2-r1)*t), g=Math.round(g1+(g2-g1)*t), b=Math.round(b1+(b2-b1)*t);
+  return `rgb(${r},${g},${b})`;
+}
 
-  function dinoJump() {
-    if (dino.grounded) {
-      dino.vy = -15;
-      dino.grounded = false;
-    }
+let eraIndex   = 0;   // era actual
+let eraT       = 0;   // transición 0..1
+let lastEra    = -1;  // para mostrar el label solo cuando cambia
+
+function getEra() {
+  const pts = Math.floor(score / 5);
+  // determinar qué era corresponde
+  let ei = 0;
+  for (let i = ERA_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (pts >= ERA_THRESHOLDS[i]) { ei = i; break; }
   }
+  // calcular progreso dentro de la era (para transición)
+  const next = ERA_THRESHOLDS[ei + 1] ?? ERA_THRESHOLDS[ei] + 200;
+  const cur  = ERA_THRESHOLDS[ei];
+  eraT     = Math.min((pts - cur) / (next - cur), 1);
+  eraIndex = ei;
 
-  function dinoDuck(on) {
-    dino.ducking = on;
-    dino.h = on ? 30 : 52;
-    if (on) dino.y = GROUND + (52 - 30);
-    else    dino.y = GROUND;
+  if (ei !== lastEra) {
+    lastEra = ei;
+    document.getElementById('time-label').textContent = ERAS[ei].name;
   }
+  return ERAS[ei];
+}
 
-  // ─── OBSTÁCULOS ───────────────────────────────────────────────────
-  let obstacles = [];
-  let nextObs   = 90;   // frames hasta el siguiente obstáculo
+function skyColor(era, idx) {
+  const next = ERAS[Math.min(eraIndex + 1, ERAS.length - 1)];
+  return lerpColor(era.sky[idx], next.sky[idx], eraT * 0.5);
+}
 
-  const CACTUS_TYPES = [
-    { w: 20, h: 50 },
-    { w: 36, h: 50 },
-    { w: 20, h: 70 },
-    { w: 54, h: 50 },
-  ];
+// ═══════════════════════════════════════════════════════════
+//  ESTADO
+// ═══════════════════════════════════════════════════════════
+let state     = 'idle';
+let score     = 0;
+let bestScore = 0;
+let speed     = 6;
+let frame     = 0;
+let animId    = null;
 
-  function spawnObstacle() {
-    const t = CACTUS_TYPES[Math.floor(Math.random() * CACTUS_TYPES.length)];
-    obstacles.push({
-      x: W + 10,
-      y: GROUND + dino.h - t.h + (52 - t.h < 0 ? 52 - t.h : 0),   // alineado al suelo
-      w: t.w,
-      h: t.h,
-      type: 'cactus'
-    });
-    // intervalo aleatorio entre obstáculos (disminuye con velocidad)
-    nextObs = Math.floor(Math.random() * 60 + 60) - Math.floor(speed * 2);
+// ═══════════════════════════════════════════════════════════
+//  DINO
+// ═══════════════════════════════════════════════════════════
+const dino = {
+  x: 80, y: GROUND,
+  w: 44, h: 52,
+  vy: 0, grounded: true,
+  ducking: false, legFrame: 0,
+  dead: false,
+};
+
+function dinoJump() {
+  if (dino.grounded && !dino.dead) {
+    dino.vy = -15;
+    dino.grounded = false;
   }
+}
 
-  // ─── NUBES ────────────────────────────────────────────────────────
-  let clouds = [];
-  for (let i = 0; i < 5; i++) {
-    clouds.push({ x: Math.random() * W, y: 20 + Math.random() * 50, w: 60 + Math.random() * 60 });
-  }
+function dinoDuck(on) {
+  if (dino.dead) return;
+  dino.ducking = on;
+  dino.h = on ? 30 : 52;
+  dino.y = on ? GROUND + 22 : GROUND;
+}
 
-  // ─── ESTRELLAS (decoración) ────────────────────────────────────────
-  const stars = Array.from({length: 40}, () => ({
-    x: Math.random() * W,
-    y: Math.random() * (H - 60),
-    r: Math.random() * 1.5 + 0.5,
-    blink: Math.random() * Math.PI * 2,
-  }));
+// ═══════════════════════════════════════════════════════════
+//  OBSTÁCULOS
+// ═══════════════════════════════════════════════════════════
+let obstacles = [];
+let nextObs   = 100;
+const CACTUS_TYPES = [
+  { w: 20, h: 50 },
+  { w: 36, h: 50 },
+  { w: 20, h: 70 },
+  { w: 54, h: 50 },
+];
 
-  // ─── COLISIÓN ─────────────────────────────────────────────────────
-  function collides(a, b) {
-    const pad = 8;   // margen de tolerancia (hace el juego más justo)
-    return (
-      a.x + pad < b.x + b.w - pad &&
-      a.x + a.w - pad > b.x + pad &&
-      a.y + pad < b.y + b.h &&
-      a.y + a.h > b.y + pad
-    );
-  }
+function spawnObstacle() {
+  const t = CACTUS_TYPES[Math.floor(Math.random() * CACTUS_TYPES.length)];
+  const groundY = GROUND + 52 - t.h;
+  obstacles.push({ x: W + 10, y: groundY, w: t.w, h: t.h });
+  nextObs = Math.max(40, Math.floor(Math.random() * 70 + 55) - Math.floor(speed * 1.5));
+}
 
-  // ─── DIBUJAR DINO (pixel art con canvas) ──────────────────────────
-  function drawDino() {
-    const x = dino.x, y = dino.y;
-    const duck = dino.ducking;
-    ctx.fillStyle = '#00e5ff';
+// ═══════════════════════════════════════════════════════════
+//  NUBES
+// ═══════════════════════════════════════════════════════════
+let clouds = Array.from({ length: 5 }, () => ({
+  x: Math.random() * W,
+  y: 15 + Math.random() * 55,
+  w: 55 + Math.random() * 65,
+}));
 
-    if (!duck) {
-      // cuerpo
-      ctx.fillRect(x + 8,  y,      28, 20);
-      // cabeza
-      ctx.fillRect(x + 16, y - 18, 24, 18);
-      // ojo
-      ctx.fillStyle = '#1a1a2e';
-      ctx.fillRect(x + 32, y - 14, 5, 5);
-      ctx.fillStyle = '#00e5ff';
-      // boca
-      ctx.fillStyle = '#e94560';
-      ctx.fillRect(x + 38, y - 6,  6, 3);
-      ctx.fillStyle = '#00e5ff';
-      // cola
-      ctx.fillRect(x,      y + 6,  12, 10);
-      // pata trasera
-      ctx.fillRect(x + 4,  y + 18, 10, 12);
-      // piernas animadas
-      const leg = Math.floor(dino.legFrame / 6) % 2;
-      if (dino.grounded) {
-        ctx.fillRect(x + 16, y + 20, 10, leg === 0 ? 20 : 14);
-        ctx.fillRect(x + 26, y + 20, 10, leg === 0 ? 14 : 20);
-      } else {
-        // salto: piernas extendidas
-        ctx.fillRect(x + 16, y + 20, 10, 18);
-        ctx.fillRect(x + 26, y + 20, 10, 10);
-      }
-    } else {
-      // agachado
-      ctx.fillRect(x,      y,      54, 18);
-      ctx.fillRect(x + 30, y - 14, 20, 14);
-      ctx.fillStyle = '#1a1a2e';
-      ctx.fillRect(x + 44, y - 10, 5, 5);
-      ctx.fillStyle = '#00e5ff';
-      ctx.fillRect(x,      y + 14, 12, 10);
-    }
-  }
+// ═══════════════════════════════════════════════════════════
+//  ESTRELLAS
+// ═══════════════════════════════════════════════════════════
+const stars = Array.from({ length: 50 }, () => ({
+  x: Math.random() * W,
+  y: Math.random() * (H * 0.7),
+  r: Math.random() * 1.6 + 0.4,
+  blink: Math.random() * Math.PI * 2,
+}));
 
-  // ─── DIBUJAR CACTUS ───────────────────────────────────────────────
-  function drawCactus(obs) {
-    ctx.fillStyle = '#e94560';
-    const x = obs.x, y = obs.y, w = obs.w, h = obs.h;
-    // tronco central
-    ctx.fillRect(x + w/2 - 6, y, 12, h);
-    // brazos
-    if (w >= 36) {
-      ctx.fillRect(x,           y + h * 0.25, 14, 8);
-      ctx.fillRect(x,           y + h * 0.1,  8,  h * 0.2);
-      ctx.fillRect(x + w - 14,  y + h * 0.25, 14, 8);
-      ctx.fillRect(x + w - 8,   y + h * 0.1,  8,  h * 0.2);
-    } else {
-      ctx.fillRect(x,           y + h * 0.3, 10, 7);
-      ctx.fillRect(x,           y + h * 0.15, 7, h * 0.2);
-    }
-    // punta
-    ctx.fillStyle = '#ff6b8a';
-    ctx.fillRect(x + w/2 - 4, y - 6, 8, 8);
-  }
+// ═══════════════════════════════════════════════════════════
+//  COLISIÓN
+// ═══════════════════════════════════════════════════════════
+function collides(a, b) {
+  const p = 8;
+  return (
+    a.x + p < b.x + b.w - p &&
+    a.x + a.w - p > b.x + p &&
+    a.y + p < b.y + b.h &&
+    a.y + a.h > b.y + p
+  );
+}
 
-  // ─── DIBUJAR NUBE ─────────────────────────────────────────────────
-  function drawCloud(c) {
-    ctx.fillStyle = '#ffffff18';
+// ═══════════════════════════════════════════════════════════
+//  DIBUJAR FONDO (cielo, sol/luna, estrellas, nubes, suelo)
+// ═══════════════════════════════════════════════════════════
+function drawBackground(era) {
+  // Cielo degradado
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0,    skyColor(era, 0));
+  grad.addColorStop(0.55, skyColor(era, 1));
+  grad.addColorStop(1,    skyColor(era, 2));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Sol
+  if (era.sun?.show) {
+    const sx = W * era.sun.x, sy = H * era.sun.y;
+    const sgr = ctx.createRadialGradient(sx, sy, 2, sx, sy, 30);
+    sgr.addColorStop(0, era.sun.color);
+    sgr.addColorStop(0.5, era.sun.color + 'aa');
+    sgr.addColorStop(1, 'transparent');
+    ctx.fillStyle = sgr;
     ctx.beginPath();
-    ctx.ellipse(c.x + c.w * 0.5, c.y, c.w * 0.5, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(c.x + c.w * 0.3, c.y + 4, c.w * 0.3, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(c.x + c.w * 0.7, c.y + 4, c.w * 0.25, 9, 0, 0, Math.PI * 2);
+    ctx.arc(sx, sy, 30, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // ─── DIBUJAR PISO ─────────────────────────────────────────────────
-  function drawGround() {
-    ctx.fillStyle = '#e9456044';
-    ctx.fillRect(0, GROUND + dino.h + 2, W, 3);
-    // piedrecillas
-    ctx.fillStyle = '#ffffff22';
-    for (let i = 0; i < 12; i++) {
-      const px = ((i * 80 + frame * speed) % W);
-      ctx.fillRect(px, GROUND + dino.h + 6, 6, 3);
-      ctx.fillRect(px + 20, GROUND + dino.h + 8, 3, 2);
-    }
+  // Luna
+  if (era.moon?.show) {
+    const mx = W * era.moon.x, my = H * era.moon.y;
+    ctx.fillStyle = '#fffde7';
+    ctx.beginPath();
+    ctx.arc(mx, my, 18, 0, Math.PI * 2);
+    ctx.fill();
+    // sombra de la luna para efecto creciente
+    ctx.fillStyle = skyColor(era, 0);
+    ctx.beginPath();
+    ctx.arc(mx + 7, my - 4, 15, 0, Math.PI * 2);
+    ctx.fill();
+    // halo
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = '#fffde7';
+    ctx.beginPath();
+    ctx.arc(mx, my, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
-  // ─── BUCLE PRINCIPAL ──────────────────────────────────────────────
-  function gameLoop() {
-    frame++;
-    ctx.clearRect(0, 0, W, H);
-
-    // — fondo —
-    ctx.fillStyle = '#16213e';
-    ctx.fillRect(0, 0, W, H);
-
-    // — estrellas —
+  // Estrellas (solo visibles en noche / atardecer tardío)
+  const starAlpha = era.star;
+  if (starAlpha > 0) {
     stars.forEach(s => {
-      s.blink += 0.04;
-      ctx.globalAlpha = 0.4 + 0.4 * Math.sin(s.blink);
-      ctx.fillStyle = '#fff';
+      s.blink += 0.035;
+      ctx.globalAlpha = starAlpha * (0.4 + 0.5 * Math.sin(s.blink));
+      ctx.fillStyle = '#ffffff';
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
       ctx.fill();
     });
     ctx.globalAlpha = 1;
+  }
 
-    // — nubes —
-    clouds.forEach(c => {
-      c.x -= speed * 0.3;
-      if (c.x + c.w < 0) { c.x = W + 20; c.y = 20 + Math.random() * 50; }
-      drawCloud(c);
-    });
-
-    // — piso —
-    drawGround();
-
+  // Nubes
+  clouds.forEach(c => {
     if (state === 'running') {
-      // — física del dino —
-      if (!dino.grounded) {
-        dino.vy += 0.7;   // gravedad
-        dino.y  += dino.vy;
+      c.x -= speed * 0.25;
+      if (c.x + c.w < 0) { c.x = W + 20; c.y = 15 + Math.random() * 55; c.w = 55 + Math.random() * 65; }
+    }
+    ctx.fillStyle = era.cloud;
+    ctx.beginPath();
+    ctx.ellipse(c.x + c.w * 0.5, c.y,      c.w * 0.48, 11, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(c.x + c.w * 0.28, c.y + 5, c.w * 0.30, 10, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(c.x + c.w * 0.72, c.y + 5, c.w * 0.26,  9, 0, 0, Math.PI*2); ctx.fill();
+  });
+
+  // Suelo
+  ctx.fillStyle = era.ground;
+  ctx.fillRect(0, GROUND + 52, W, H - GROUND - 52);
+  // línea del suelo
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(0, GROUND + 52, W, 3);
+  // piedrecillas
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  for (let i = 0; i < 14; i++) {
+    const px = ((i * 72 + frame * speed * 0.5) % W);
+    ctx.fillRect(px, GROUND + 57, 7, 3);
+    ctx.fillRect(px + 25, GROUND + 61, 4, 2);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DIBUJAR DINO
+// ═══════════════════════════════════════════════════════════
+function drawDino(era) {
+  // Color del dino cambia con la era
+  const DINO_COLORS = ['#2ecc71', '#27ae60', '#e67e22', '#00e5ff'];
+  const col = DINO_COLORS[eraIndex] || '#2ecc71';
+
+  const x = dino.x, y = dino.y;
+  ctx.fillStyle = col;
+
+  if (dino.dead) {
+    // animación de muerte: gira/aplana
+    ctx.save();
+    ctx.translate(x + 22, y + 26);
+    ctx.rotate(0.4);
+    ctx.fillRect(-22, -26, 44, 52);
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(-10, -10, 8, 8);
+    ctx.fillRect(5, -10, 8, 8);
+    ctx.restore();
+    return;
+  }
+
+  if (!dino.ducking) {
+    ctx.fillRect(x + 8,  y,      28, 20);
+    ctx.fillRect(x + 16, y - 18, 24, 18);
+    // ojo
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(x + 32, y - 14, 5, 5);
+    ctx.fillStyle = col;
+    // boca
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(x + 38, y - 6, 6, 3);
+    ctx.fillStyle = col;
+    // cola
+    ctx.fillRect(x,     y + 6,  12, 10);
+    ctx.fillRect(x + 4, y + 18, 10, 12);
+    // piernas animadas
+    const leg = Math.floor(dino.legFrame / 5) % 2;
+    if (dino.grounded) {
+      ctx.fillRect(x + 16, y + 20, 10, leg === 0 ? 20 : 13);
+      ctx.fillRect(x + 26, y + 20, 10, leg === 0 ? 13 : 20);
+    } else {
+      ctx.fillRect(x + 16, y + 20, 10, 18);
+      ctx.fillRect(x + 26, y + 20, 10, 9);
+    }
+  } else {
+    ctx.fillRect(x,      y,      54, 18);
+    ctx.fillRect(x + 30, y - 14, 20, 14);
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(x + 44, y - 10, 5, 5);
+    ctx.fillStyle = col;
+    ctx.fillRect(x, y + 14, 12, 10);
+    const leg = Math.floor(dino.legFrame / 5) % 2;
+    ctx.fillRect(x + 10, y + 14, 10, leg === 0 ? 14 : 9);
+    ctx.fillRect(x + 24, y + 14, 10, leg === 0 ? 9 : 14);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DIBUJAR CACTUS
+// ═══════════════════════════════════════════════════════════
+function drawCactus(obs, era) {
+  // Color cactus adaptado a la era
+  const CC = ['#27ae60', '#16a085', '#c0392b', '#1a6b3a'];
+  ctx.fillStyle = CC[eraIndex] || '#27ae60';
+  const { x, y, w, h } = obs;
+  ctx.fillRect(x + w/2 - 6, y, 12, h);
+  if (w >= 36) {
+    ctx.fillRect(x,          y + h*0.25, 14, 8);
+    ctx.fillRect(x,          y + h*0.10,  8, h*0.20);
+    ctx.fillRect(x+w-14,     y + h*0.25, 14, 8);
+    ctx.fillRect(x+w-8,      y + h*0.10,  8, h*0.20);
+  } else {
+    ctx.fillRect(x,          y + h*0.30, 10, 7);
+    ctx.fillRect(x,          y + h*0.15,  7, h*0.20);
+  }
+  // punta
+  const PC = ['#52d68a', '#48c9b0', '#ff8a80', '#52c77b'];
+  ctx.fillStyle = PC[eraIndex] || '#52d68a';
+  ctx.fillRect(x + w/2 - 4, y - 6, 8, 8);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BUCLE PRINCIPAL  ← aquí estaba el bug: endGame() llamaba
+//  return y dejaba de llamar requestAnimationFrame, pero el
+//  animId antiguo quedaba activo si no se cancelaba. Ahora
+//  el loop SIEMPRE sigue corriendo; solo el estado cambia.
+// ═══════════════════════════════════════════════════════════
+function gameLoop() {
+  frame++;
+  ctx.clearRect(0, 0, W, H);
+
+  const era = (state === 'running') ? getEra() : ERAS[eraIndex];
+
+  // — fondo completo —
+  drawBackground(era);
+
+  if (state === 'running') {
+    // física dino
+    if (!dino.grounded) {
+      dino.vy += 0.72;
+      dino.y  += dino.vy;
+    }
+    if (dino.y >= GROUND) {
+      dino.y = GROUND;
+      dino.vy = 0;
+      dino.grounded = true;
+    }
+    dino.legFrame++;
+
+    // obstáculos
+    nextObs--;
+    if (nextObs <= 0) spawnObstacle();
+    obstacles.forEach(o => o.x -= speed);
+    obstacles = obstacles.filter(o => o.x + o.w > 0);
+
+    // colisión → NO hacemos return, solo cambiamos estado
+    for (const o of obstacles) {
+      if (collides(dino, o)) {
+        dino.dead = true;
+        endGame();   // ← ya no hace return; solo actualiza estado y overlay
+        break;
       }
-      if (dino.y >= GROUND) {
-        dino.y       = GROUND;
-        dino.vy      = 0;
-        dino.grounded = true;
-      }
-      dino.legFrame++;
+    }
 
-      // — obstáculos —
-      nextObs--;
-      if (nextObs <= 0) spawnObstacle();
-
-      obstacles.forEach(o => o.x -= speed);
-      obstacles = obstacles.filter(o => o.x + o.w > 0);
-
-      // — colisión —
-      for (const o of obstacles) {
-        if (collides(dino, o)) { endGame(); return; }
-      }
-
-      // — puntuación —
+    // puntuación y velocidad
+    if (state === 'running') {  // verificar que no murió en esta iteración
       score++;
-      if (score % 100 === 0) speed = Math.min(speed + 0.5, 18);   // acelera
-      document.getElementById('pts').textContent  = Math.floor(score / 5);
+      if (score % 80 === 0) speed = Math.min(speed + 0.4, 20);
+      document.getElementById('pts').textContent = Math.floor(score / 5);
     }
-
-    // — dibujar obstáculos —
-    obstacles.forEach(drawCactus);
-
-    // — dibujar dino —
-    drawDino();
-
-    animId = requestAnimationFrame(gameLoop);
   }
 
-  // ─── INICIO / FIN ─────────────────────────────────────────────────
-  function startGame() {
-    state      = 'running';
-    score      = 0;
-    speed      = 6;
-    frame      = 0;
-    obstacles  = [];
-    nextObs    = 90;
-    dino.y     = GROUND;
-    dino.vy    = 0;
-    dino.grounded = true;
-    dino.ducking  = false;
-    dino.h        = 52;
-    document.getElementById('overlay').style.display = 'none';
+  // siempre dibujar obstáculos y dino (incluso en dead para ver el frame final)
+  obstacles.forEach(o => drawCactus(o, era));
+  drawDino(era);
+
+  // seguir el loop SIN importar el estado
+  animId = requestAnimationFrame(gameLoop);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INICIO / FIN
+// ═══════════════════════════════════════════════════════════
+function startGame() {
+  // NO cancelamos ni relanzamos el loop — solo reseteamos variables.
+  // El único loop que existe arranca una sola vez al final del script
+  // y corre para siempre; el estado controla qué hace cada frame.
+  state      = 'running';
+  score      = 0;
+  speed      = 6;
+  frame      = 0;
+  eraIndex   = 0;
+  eraT       = 0;
+  lastEra    = -1;
+  obstacles  = [];
+  nextObs    = 100;
+
+  dino.y        = GROUND;
+  dino.vy       = 0;
+  dino.grounded = true;
+  dino.ducking  = false;
+  dino.h        = 52;
+  dino.dead     = false;
+  dino.legFrame = 0;
+
+  document.getElementById('pts').textContent = '0';
+  document.getElementById('time-label').textContent = ERAS[0].name;
+  document.getElementById('overlay').style.display = 'none';
+}
+
+function endGame() {
+  state = 'dead';
+  const pts = Math.floor(score / 5);
+  if (pts > bestScore) {
+    bestScore = pts;
+    document.getElementById('best').textContent  = bestScore;
+    document.getElementById('best2').textContent = bestScore;
   }
 
-  function endGame() {
-    state = 'dead';
-    const pts = Math.floor(score / 5);
-    if (pts > bestScore) {
-      bestScore = pts;
-      document.getElementById('best').textContent  = bestScore;
-      document.getElementById('best2').textContent = bestScore;
-    }
-
+  // Esperar 400ms para mostrar el overlay (el jugador ve al dino morir)
+  setTimeout(() => {
     const ov = document.getElementById('overlay');
     ov.innerHTML = `
       <h2 style="color:#e94560">💀 ¡GAME OVER!</h2>
       <p>Puntos: <span style="color:#ffd700">${pts}</span></p>
-      <p class="hi" style="margin-top:10px">🏆 Mejor: ${bestScore}</p>
-      <p style="margin-top:18px;color:#aaa;font-size:0.55rem">ESPACIO / TAP para reiniciar</p>`;
+      <p>Era: ${ERAS[eraIndex].name}</p>
+      <p class="gold" style="margin-top:10px">🏆 Mejor: ${bestScore}</p>
+      <p style="margin-top:18px;color:#aaa;font-size:0.52rem">
+        ESPACIO · ↑ · TAP para reiniciar
+      </p>`;
     ov.style.display = 'flex';
+  }, 400);
+  // NOTA: el loop sigue corriendo — el overlay queda encima
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CONTROLES
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    if (state === 'idle' || state === 'dead') startGame();
+    else dinoJump();
   }
+  if (e.code === 'ArrowDown') dinoDuck(true);
+});
 
-  // ─── CONTROLES ────────────────────────────────────────────────────
-  document.addEventListener('keydown', e => {
-    if (e.code === 'Space' || e.code === 'ArrowUp') {
-      e.preventDefault();
-      if (state === 'idle' || state === 'dead') startGame();
-      else dinoJump();
-    }
-    if (e.code === 'ArrowDown') dinoDuck(true);
-  });
+document.addEventListener('keyup', e => {
+  if (e.code === 'ArrowDown') dinoDuck(false);
+});
 
-  document.addEventListener('keyup', e => {
-    if (e.code === 'ArrowDown') dinoDuck(false);
-  });
+canvas.addEventListener('click', () => {
+  if (state !== 'running') startGame();
+  else dinoJump();
+});
 
-  canvas.addEventListener('click',      () => { if (state !== 'running') startGame(); else dinoJump(); });
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); if (state !== 'running') startGame(); else dinoJump(); }, { passive: false });
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (state !== 'running') startGame();
+  else dinoJump();
+}, { passive: false });
 
-  // ─── ARRANCAR LOOP ────────────────────────────────────────────────
-  gameLoop();
+// ═══════════════════════════════════════════════════════════
+//  ARRANQUE INICIAL — un solo loop, corre para siempre
+// ═══════════════════════════════════════════════════════════
+gameLoop();
 </script>
 </body>
 </html>
