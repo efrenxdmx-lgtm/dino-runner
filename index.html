@@ -574,12 +574,14 @@ document.addEventListener('keyup', e => {
   if (e.code === 'ArrowDown') dinoDuck(false);
 });
 
-canvas.addEventListener('click', () => {
+// click y touch en TODO el documento para no perder toques
+// que caigan sobre el overlay o fuera del canvas
+document.addEventListener('click', () => {
   if (state !== 'running') startGame();
   else dinoJump();
 });
 
-canvas.addEventListener('touchstart', e => {
+document.addEventListener('touchstart', e => {
   e.preventDefault();
   if (state !== 'running') startGame();
   else dinoJump();
